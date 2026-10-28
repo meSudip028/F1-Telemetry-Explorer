@@ -1,127 +1,187 @@
 # 🏎️ F1 Telemetry Explorer
 
-A Python-based Formula 1 data analysis project that explores qualifying lap times, car telemetry, circuit speed maps, and driver comparisons using real session data.
+A Python-based Formula 1 data analysis project built with FastF1, Pandas, NumPy, and Matplotlib. Explore qualifying lap times, visualize circuit speed maps, analyze car telemetry, and compare drivers using real session data.
 
-Built as a hands-on learning project to explore Python, data analysis, and motorsport telemetry.
+This project started as a single-race analysis and has evolved into a configurable notebook that can analyze different Grand Prix sessions.
 
-## 📌 Project Overview
+## 🏁 Project Overview
 
-The F1 Telemetry Explorer analyzes the **2022 Bahrain Grand Prix qualifying session** using the FastF1 Python library.
+F1 Telemetry Explorer retrieves Formula 1 session data and turns it into visual insights about driver performance.
 
-It retrieves session and lap data, visualizes car telemetry, and compares Charles Leclerc's and Max Verstappen's fastest qualifying laps.
+The project currently includes analysis from two 2022 qualifying sessions:
+
+- **Bahrain Grand Prix:** Charles Leclerc's telemetry and Leclerc-versus-Verstappen comparison.
+- **Saudi Arabian Grand Prix:** Automatic top-two driver selection and a Perez-versus-Leclerc comparison.
+
+The configurable notebook allows the season, Grand Prix, and session to be changed from a shared configuration cell.
 
 ## ✨ Features
 
-- **Qualifying Lap Analysis:** Retrieve and sort the ten fastest available laps.
-- **Circuit Speed Map:** Visualize Charles Leclerc's racing line, colored according to car speed.
+- **Qualifying Lap Analysis:** Display the ten fastest available individual laps.
+- **Automatic Driver Selection:** Prefer the top two drivers in the session classification, with a fastest-lap fallback when classification data is unavailable.
+- **Circuit Speed Maps:** Visualize the driver's recorded racing line, colored according to speed.
 - **Telemetry Analysis:** Plot speed, throttle, brake application, and gear against distance.
-- **Driver Comparison:** Compare Leclerc and Verstappen using speed, throttle, braking, and an estimated time-gap curve.
-- **Exportable Visualizations:** Save the generated charts as PNG images.
+- **Driver Comparison:** Compare speed, throttle, braking, lap times, and an estimated distance-aligned time-gap curve.
+- **Race-Specific Image Saving:** Store each race and session's visualizations in a separate output folder.
+- **Exportable Graphs:** Save visualizations as PNG images for reports and documentation.
 
-## 📊 Project Screenshots
+## 📊 Visualizations
 
-### 1. Circuit Speed Map
+### 1. Bahrain Grand Prix — 2022 Qualifying
 
-The circuit is colored according to Leclerc's recorded speed around the lap.
+#### Circuit speed map
 
-![F1 circuit speed map](images/f1_circuit_speed_map.png)
+Visualizes Charles Leclerc's racing line using telemetry speed.
 
-### 2. Telemetry Analysis
+![Bahrain circuit speed map](images/2022-bahrain-grand-prix-qualifying/f1_circuit_speed_map.png)
 
-Speed, throttle, brake application, and gear plotted against distance.
+#### Telemetry analysis
 
-![F1 telemetry analysis](images/f1_telemetry_analysis.png)
+Shows speed, throttle, brake application, and gear throughout Leclerc's selected lap.
 
-### 3. Leclerc vs. Verstappen
+![Bahrain telemetry analysis](images/2022-bahrain-grand-prix-qualifying/f1_telemetry_analysis.png)
 
-A comparison of both drivers' fastest qualifying laps, including telemetry and an estimated distance-aligned time-gap curve.
+#### Driver comparison
 
-![F1 driver comparison](images/f1_driver_comparison.png)
+Compares Leclerc and Verstappen using their selected fastest qualifying laps.
+
+![Bahrain driver comparison](images/2022-bahrain-grand-prix-qualifying/f1_driver_comparison.png)
+
+### 2. Saudi Arabian Grand Prix — 2022 Qualifying
+
+#### Circuit speed map
+
+Visualizes Sergio Perez's selected qualifying lap after automatic driver selection.
+
+![Saudi Arabia circuit speed map](images/2022-saudi-arabian-grand-prix-qualifying/f1_circuit_speed_map.png)
+
+#### Telemetry analysis
+
+Displays the selected driver's speed, throttle, braking, and gear data.
+
+![Saudi Arabia telemetry analysis](images/2022-saudi-arabian-grand-prix-qualifying/f1_telemetry_analysis.png)
+
+#### Driver comparison
+
+Compares Perez and Leclerc using their selected qualifying laps.
+
+![Saudi Arabia driver comparison](images/2022-saudi-arabian-grand-prix-qualifying/f1_driver_comparison.png)
 
 ## 🛠️ Technologies Used
 
-- **Python** — Programming language
+- **Python** — Main programming language
 - **FastF1** — Formula 1 session, lap, and telemetry data
-- **Pandas** — Data cleaning and tabular analysis
-- **NumPy** — Numerical operations and interpolation
+- **Pandas** — Data cleaning and table manipulation
+- **NumPy** — Numerical calculations and interpolation
 - **Matplotlib** — Circuit maps and telemetry visualizations
-- **Google Colab** — Development and execution environment
-- **Git and GitHub** — Version control and project sharing
+- **Google Colab** — Notebook development and execution
+- **Git and GitHub** — Version control and project hosting
 
 ## 🚀 Getting Started
 
-### Option 1: Run in Google Colab
+### Run the notebook in Google Colab
 
-1. Download or clone this repository.
-2. Open `F1_Telemetry_Explorer.ipynb` in Google Colab.
-3. Install the required packages in a code cell:
+Open the notebook from GitHub:
 
-   ```python
-   !pip install fastf1 pandas numpy matplotlib
-   ```
+[Open F1 Telemetry Explorer V2 in Google Colab](https://colab.research.google.com/github/meSudip028/F1-Telemetry-Explorer/blob/main/F1_Telemetry_Explorer_V2.ipynb)
 
-4. Run the notebook cells in order, from Stage 1 through Stage 4.
-5. View the generated charts and analysis.
+Install the required packages in the first code cell:
 
-**Note:** If your Colab runtime restarts, run the installation cell again. Previously downloaded cache files and generated images may need to be recreated.
-
-### Option 2: Install the dependencies locally
-
-Install Python and the required packages:
-
-```bash
-pip install fastf1 pandas numpy matplotlib
+```python
+!pip install fastf1 pandas numpy matplotlib
 ```
 
-The notebook was developed for Google Colab. Some file paths and environment-specific settings may need to be adjusted before running it locally.
+Run the notebook from top to bottom:
+
+1. Shared Configuration
+2. Stage 1 — Lap Analysis
+3. Stage 2 — Circuit Speed Map
+4. Stage 3 — Telemetry Analysis
+5. Stage 4 — Driver Comparison
+
+If the Colab runtime restarts, run the installation and configuration cells again before running the analysis.
+
+### Change the race and session
+
+Edit the shared configuration cell near the top of the notebook:
+
+```python
+YEAR = 2022
+EVENT_NAME = "Saudi Arabian Grand Prix"
+SESSION_CODE = "Q"
+```
+
+Common session codes include:
+
+- `FP1` — Practice 1
+- `FP2` — Practice 2
+- `FP3` — Practice 3
+- `Q` — Qualifying
+- `S` — Sprint
+- `R` — Race
+
+Availability varies by season and event format.
+
+Set automatic driver selection to `True` to select the top two drivers from the session classification when available. If classification data is unavailable, the notebook can fall back to ranking drivers by their fastest timed laps.
+
+Run Stage 1 after the configuration cell so the selected drivers are updated before running Stages 2–4.
 
 ## 📂 Project Structure
 
 ```text
 F1-Telemetry-Explorer/
 ├── F1_Telemetry_Explorer.ipynb
+├── F1_Telemetry_Explorer_V2.ipynb
 ├── README.md
+├── requirements.txt
+├── .gitignore
 └── images/
-    ├── f1_circuit_speed_map.png
-    ├── f1_telemetry_analysis.png
-    └── f1_driver_comparison.png
+    ├── 2022-bahrain-grand-prix-qualifying/
+    │   ├── f1_circuit_speed_map.png
+    │   ├── f1_telemetry_analysis.png
+    │   └── f1_driver_comparison.png
+    └── 2022-saudi-arabian-grand-prix-qualifying/
+        ├── f1_circuit_speed_map.png
+        ├── f1_telemetry_analysis.png
+        └── f1_driver_comparison.png
 ```
 
-## 📈 Understanding the Driver Comparison
+## 📈 Understanding the Time-Gap Analysis
 
-The project selects each driver's fastest valid qualifying lap and compares their telemetry over distance.
+The driver comparison aligns each driver's telemetry to a common distance grid and estimates the elapsed-time difference at matching distances.
 
-The time-gap graph is an **estimate**, calculated by aligning each driver's telemetry time to a common distance grid. It is not an official FIA timing calculation.
+The result is an **estimate from sampled telemetry**, not an official FIA timing calculation. The drivers' fastest laps may have occurred at different times or under different conditions.
 
-The actual difference between the recorded lap times is reported separately. Because the drivers' fastest laps may have been recorded at different points in qualifying, this analysis does not establish a controlled, same-condition comparison.
+The actual difference between the selected lap times is reported separately.
 
-The brake channel is visualized as an on/off signal when the underlying data is Boolean. It does not represent actual brake pressure.
+The notebook also treats the Boolean brake channel as an on/off signal when applicable. It does not claim to measure brake pressure.
 
-## 🎯 What I Learned
+## 🎓 What I Learned
 
-- Working with a Python data library
-- Loading and exploring structured data
+- Loading and exploring structured data using a Python library
 - Cleaning missing and invalid telemetry values
-- Using Pandas and NumPy for data analysis
-- Creating visualizations with Matplotlib
-- Comparing time-series data using distance-based interpolation
-- Organizing a multi-stage Python project
+- Analyzing data with Pandas and NumPy
+- Building circuit and time-series visualizations with Matplotlib
+- Comparing sampled time-series data using distance-based interpolation
+- Refactoring code to use shared configuration settings
+- Organizing outputs by event and session
+- Preparing a Python project for GitHub
 
 ## 🔮 Future Improvements
 
 - Build an interactive dashboard using Streamlit.
-- Add circuit selection and driver selection.
-- Compare additional drivers and qualifying sessions.
-- Add more telemetry analysis and improved visualizations.
-- Deploy the dashboard as a public web application.
+- Add dropdowns for season, Grand Prix, session, and driver selection.
+- Support browsing and comparing multiple races from an interactive interface.
+- Improve lap validation and time-gap analysis.
+- Deploy a public web application.
 
 ## ⚠️ Data and Disclaimer
 
-This is an independent educational project and is not affiliated with Formula 1, the FIA, or any racing team.
+This is an independent educational project and is not affiliated with Formula 1, the FIA, or any Formula 1 team.
 
-Session data is accessed through FastF1. Availability depends on the data source, internet access, and any applicable authentication requirements.
+Data availability depends on FastF1, the upstream data sources, internet access, and any applicable authentication requirements.
 
-Formula 1 names and related marks belong to their respective owners. Please respect the relevant data-source terms and usage restrictions.
+Formula 1 names and related marks belong to their respective owners.
 
 ---
 
