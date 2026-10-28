@@ -1,0 +1,26 @@
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Jupyter temporary files
+.ipynb_checkpoints/
+
+# macOS files
+.DS_Store
+
+# Temporary and generated archives
+*.zip
+
+# Local FastF1 cache
+fastf1_cache/
