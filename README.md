@@ -2,7 +2,11 @@
 
 An interactive Formula 1 data analysis project built with Python. Explore the **complete 2022 F1 season** through qualifying telemetry, race lap-time analysis, driver comparisons, and session results.
 
-🌐 **[Launch the Live Dashboard](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/)** · 💻 **[View Source Code](https://github.com/meSudip028/F1-Telemetry-Explorer)**
+### 🖥️ Live Dashboard Preview
+
+![F1 Telemetry Explorer dashboard showing race results and winner spotlight](dashboard-race-overview.png)
+
+🌐 **[Try the Live Dashboard](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/)**
 
 ---
 
