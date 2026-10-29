@@ -403,16 +403,30 @@ def show_saved_gallery():
             continue
 
         st.markdown(f"### {title}")
-        columns = st.columns(3)
+    for filename, label in existing:
+      image_path = folder / filename
 
-        for column, (filename, label) in zip(columns, existing):
-            with column:
-                st.image(
-                    str(folder / filename),
-                    caption=label,
-                    use_container_width=True
-                )
+    st.subheader(label)
 
+    if image_path.is_file():
+        st.image(
+            str(image_path),
+            caption=label,
+            use_container_width=True
+        )
+
+        with st.expander(f"Download {label}"):
+            st.download_button(
+                label=f"Download {label} (PNG)",
+                data=image_path.read_bytes(),
+                file_name=filename,
+                mime="image/png",
+                key=f"download_{folder.name}_{filename}",
+            )
+    else:
+        st.warning(f"Image not found: {filename}")
+
+    st.divider()
 
 # ------------------------------------------------------------
 # 4. Cached data functions
