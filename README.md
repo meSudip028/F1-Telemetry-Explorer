@@ -12,6 +12,12 @@ An interactive Formula 1 data analysis project built with Python. Explore the **
 
 ## 🏁 Project Overview
 
+### 🖥️ Live Dashboard Preview
+
+![F1 Telemetry Explorer dashboard showing race results and winner spotlight](dashboard-race-overview.png)
+
+🌐 **[Try the Live Dashboard](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/)**
+
 F1 Telemetry Explorer is a Streamlit dashboard for exploring the 22 Grands Prix of the 2022 Formula 1 season.
 
 Choose a Grand Prix, switch between **Qualifying** and **Race**, view the top three drivers, and explore the corresponding visualizations.
