@@ -6,6 +6,14 @@ This project started as a single-race analysis and has evolved into a configurab
 
 ## 🏁 Project Overview
 
+## 🌐 Live Demo
+
+**Try the interactive dashboard:** [Launch F1 Telemetry Explorer](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/)
+
+Browse saved Formula 1 qualifying analyses from the 2022 Bahrain and Saudi Arabian Grands Prix, including circuit speed maps, car telemetry, and driver comparisons.
+
+
+
 F1 Telemetry Explorer retrieves Formula 1 session data and turns it into visual insights about driver performance.
 
 The project currently includes analysis from two 2022 qualifying sessions:
