@@ -1,0 +1,6 @@
+2022 race analysis data source
+Source: Jolpica-F1 public timing/classification API.
+
+These charts use lap times and recorded race positions. They do not contain car telemetry channels such as speed, throttle, brake, gear, or GPS position.
+Position progression uses reported position by lap; lap-time progression includes recorded times, so pit stops, traffic and safety-car periods can create spikes.
+The fastest recorded lap comparison is computed from the available lap-timing feed and may not match official classification in all edge cases.

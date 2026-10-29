@@ -6,6 +6,10 @@
 import io
 import os
 import re
+import json
+import urllib.error
+import urllib.request
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -118,6 +122,157 @@ def slugify(value):
         str(value).lower()
     ).strip("-")
 
+# ------------------------------------------------------------
+# 2022 Grand Prix results from the Jolpica F1 API
+# ------------------------------------------------------------
+
+JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1/2022"
+
+ROUND_BY_RACE_SLUG = {
+    "bahrain": 1,
+    "saudi-arabian": 2,
+    "australian": 3,
+    "emilia-romagna": 4,
+    "miami": 5,
+    "spanish": 6,
+    "monaco": 7,
+    "azerbaijan": 8,
+    "canadian": 9,
+    "british": 10,
+    "austrian": 11,
+    "french": 12,
+    "hungarian": 13,
+    "belgian": 14,
+    "dutch": 15,
+    "italian": 16,
+    "singapore": 17,
+    "japanese": 18,
+    "united-states": 19,
+    "mexico-city": 20,
+    "sao-paulo": 21,
+    "abu-dhabi": 22,
+}
+
+
+def get_2022_round(folder_name):
+    """Get the official 2022 round number from a saved race folder."""
+    race_slug = str(folder_name).lower().removeprefix("2022-")
+    race_slug = re.sub(
+        r"-grand-prix-(qualifying|race)$",
+        "",
+        race_slug
+    )
+
+    if race_slug not in ROUND_BY_RACE_SLUG:
+        raise DataProblem(
+            f"Cannot identify the 2022 race round for: {folder_name}"
+        )
+
+    return ROUND_BY_RACE_SLUG[race_slug]
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_2022_results(round_number, session_type):
+    """Fetch qualifying or race results for one 2022 Grand Prix."""
+    endpoint_by_session = {
+        "Qualifying": "qualifying",
+        "Race": "results",
+    }
+
+    if session_type not in endpoint_by_session:
+        raise ValueError("Session must be Qualifying or Race.")
+
+    endpoint = endpoint_by_session[session_type]
+    url = (
+        f"{JOLPICA_BASE_URL}/{round_number}/"
+        f"{endpoint}/?limit=100"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "F1-Telemetry-Explorer"}
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+    ) as error:
+        raise DataProblem(
+            f"Could not load {session_type.lower()} results. "
+            "Please try again later."
+        ) from error
+
+    races = (
+        payload.get("MRData", {})
+        .get("RaceTable", {})
+        .get("Races", [])
+    )
+
+    if not races:
+        raise DataProblem(
+            f"No {session_type.lower()} results were returned "
+            f"for round {round_number}."
+        )
+
+    return races[0]
+
+# ------------------------------------------------------------
+# Driver portrait lookup using the Wikipedia page-image API
+# ------------------------------------------------------------
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_driver_photo_url(driver_url):
+    """Return a driver's Wikipedia thumbnail URL, if available."""
+    if not driver_url:
+        return None
+
+    try:
+        parsed_url = urllib.parse.urlparse(driver_url)
+
+        if (
+            not parsed_url.hostname
+            or not parsed_url.hostname.endswith("wikipedia.org")
+        ):
+            return None
+
+        page_title = urllib.parse.unquote(
+            parsed_url.path.rstrip("/").split("/")[-1]
+        )
+
+        if not page_title:
+            return None
+
+        params = urllib.parse.urlencode({
+            "action": "query",
+            "format": "json",
+            "prop": "pageimages",
+            "piprop": "thumbnail",
+            "pithumbsize": 640,
+            "titles": page_title,
+        })
+
+        request = urllib.request.Request(
+            f"https://en.wikipedia.org/w/api.php?{params}",
+            headers={
+                "User-Agent": "F1-Telemetry-Explorer/1.0"
+            },
+        )
+
+        with urllib.request.urlopen(request, timeout=12) as response:
+            payload = json.load(response)
+
+        pages = payload.get("query", {}).get("pages", {})
+        page = next(iter(pages.values()), {})
+
+        return page.get("thumbnail", {}).get("source")
+
+    except Exception:
+        return None
 
 def style_axis(ax, ylabel):
     """Apply the dashboard's dark chart style."""
@@ -525,44 +680,283 @@ if data_mode == "Browse saved analyses":
             "Check that your images folder contains race-specific subfolders."
         )
     else:
-        selected_race = st.sidebar.selectbox(
-            "Select a saved Grand Prix",
-            list(available_saved_races.keys()),
+                # --------------------------------------------------------
+        # Choose a Grand Prix and session from saved analyses
+        # --------------------------------------------------------
+
+        available_gp_sessions = {}
+
+        for folder in sorted(IMAGE_DIR.iterdir()):
+            if not folder.is_dir():
+                continue
+
+            folder_name = folder.name
+
+            if not folder_name.startswith("2022-"):
+                continue
+
+            if folder_name.endswith("-qualifying"):
+                session_type = "Qualifying"
+                gp_slug = folder_name[5:-len("-qualifying")]
+            elif folder_name.endswith("-race"):
+                session_type = "Race"
+                gp_slug = folder_name[5:-len("-race")]
+            else:
+                continue
+
+            gp_short_name = gp_slug.removesuffix("-grand-prix")
+            gp_label = f"{gp_short_name.replace('-', ' ').title()} Grand Prix"
+
+            available_gp_sessions.setdefault(gp_label, {})[
+                session_type
+            ] = folder_name
+
+        if not available_gp_sessions:
+            st.warning("No saved 2022 Grand Prix folders were found.")
+            st.stop()
+
+        selected_gp = st.sidebar.selectbox(
+            "Select a Grand Prix",
+            sorted(available_gp_sessions.keys()),
         )
 
-        race_folder = IMAGE_DIR / available_saved_races[selected_race]
-        st.header(selected_race)
+        session_options = [
+            item
+            for item in ["Qualifying", "Race"]
+            if item in available_gp_sessions[selected_gp]
+        ]
 
-        charts = [
+        selected_session = st.sidebar.radio(
+            "Choose session",
+            session_options,
+            horizontal=True,
+        )
+
+        race_folder = (
+            IMAGE_DIR
+            / available_gp_sessions[selected_gp][selected_session]
+        )
+
+        st.header(f"2022 {selected_gp}")
+        st.caption(f"Selected session: {selected_session}")
+
+        # --------------------------------------------------------
+        # Official top-three results
+        # --------------------------------------------------------
+
+        results = []
+
+        try:
+            round_number = get_2022_round(race_folder.name)
+            result_data = fetch_2022_results(
+                round_number,
+                selected_session,
+            )
+
+            if selected_session == "Qualifying":
+                results = result_data.get("QualifyingResults", [])
+                st.subheader("⏱️ Qualifying — Top 3")
+            else:
+                results = result_data.get("Results", [])
+                st.subheader("🏁 Race — Top 3")
+
+        except Exception as error:
+            st.warning(
+                f"Official result cards are temporarily unavailable: {error}"
+            )
+
+        # --------------------------------------------------------
+        # Pole sitter / race winner spotlight
+        # --------------------------------------------------------
+
+        if results:
+            spotlight = results[0]
+            driver = spotlight.get("Driver", {})
+            team = spotlight.get("Constructor", {}).get(
+                "name", "Unknown team"
+            )
+
+            driver_name = (
+                f"{driver.get('givenName', '')} "
+                f"{driver.get('familyName', '')}"
+            ).strip()
+
+            if selected_session == "Qualifying":
+                spotlight_title = "🏁 POLE POSITION"
+                spotlight_time = (
+                    spotlight.get("Q3")
+                    or spotlight.get("Q2")
+                    or spotlight.get("Q1")
+                    or "Time unavailable"
+                )
+                time_label = "Best qualifying lap"
+            else:
+                spotlight_title = "🏆 RACE WINNER"
+                time_info = spotlight.get("Time") or {}
+                spotlight_time = (
+                    time_info.get("time")
+                    or spotlight.get("status", "Unavailable")
+                )
+                time_label = "Race time / status"
+
+            st.markdown(f"### {spotlight_title}")
+
+            with st.container(border=True):
+                photo_col, details_col = st.columns([1, 2])
+
+                with photo_col:
+                    photo_url = fetch_driver_photo_url(
+                        driver.get("url")
+                    )
+
+                    if photo_url:
+                        st.image(
+                            photo_url,
+                            caption=driver_name,
+                            width=260,
+                        )
+                    else:
+                        st.caption("Driver photo unavailable")
+
+                with details_col:
+                    st.markdown(f"## {driver_name}")
+                    st.markdown(f"**Team:** {team}")
+                    st.metric(time_label, spotlight_time)
+
+                    if driver.get("url"):
+                        st.markdown(
+                            f"[Driver profile and photo source]"
+                            f"({driver['url']})"
+                        )
+
+            st.divider()
+
+            result_columns = st.columns(min(3, len(results)))
+
+            for column, result in zip(
+                result_columns,
+                results[:3],
+            ):
+                result_driver = result.get("Driver", {})
+                result_team = result.get("Constructor", {}).get(
+                    "name", "Unknown team"
+                )
+
+                name = (
+                    f"{result_driver.get('givenName', '')} "
+                    f"{result_driver.get('familyName', '')}"
+                ).strip()
+
+                if selected_session == "Qualifying":
+                    displayed_time = (
+                        result.get("Q3")
+                        or result.get("Q2")
+                        or result.get("Q1")
+                        or "Unavailable"
+                    )
+                    metric_label = "Qualifying lap"
+                else:
+                    time_info = result.get("Time") or {}
+                    displayed_time = (
+                        time_info.get("time")
+                        or result.get("status", "Unavailable")
+                    )
+                    metric_label = "Race time / gap"
+
+                with column:
+                    with st.container(border=True):
+                        st.caption(
+                            f"POSITION {result.get('position', '—')}"
+                        )
+                        st.markdown(f"### {name}")
+                        st.write(result_team)
+                        st.metric(metric_label, displayed_time)
+
+        # --------------------------------------------------------
+        # Display only charts which exist for the chosen session
+        # --------------------------------------------------------
+
+        standard_charts = [
             ("f1_circuit_speed_map.png", "Circuit speed map"),
             ("f1_telemetry_analysis.png", "Telemetry analysis"),
             ("f1_driver_comparison.png", "Driver comparison"),
         ]
 
-        columns = st.columns(3)
-        for column, (filename, caption) in zip(columns, charts):
-            image_path = race_folder / filename
-            with column:
-                if image_path.is_file():
-                    st.image(
-                        str(image_path),
-                        caption=caption,
-                        use_container_width=True,
-                    )
-                    st.download_button(
-                        f"Download {caption.lower()}",
-                        data=image_path.read_bytes(),
-                        file_name=filename,
-                        mime="image/png",
-                        key=f"download_saved_{slugify(race_folder.name)}_{filename}",
-                    )
-                else:
-                    st.warning(f"Image not found: {filename}")
+        public_race_charts = [
+            (
+                "race_position_progression.png",
+                "Race position progression — public lap timing",
+            ),
+            (
+                "race_lap_time_progression.png",
+                "Race lap-time progression — public lap timing",
+            ),
+            (
+                "race_fastest_lap_comparison.png",
+                "Fastest recorded lap comparison — public lap timing",
+            ),
+        ]
 
-        st.caption(
-            "These are saved results. Changing the selected Grand Prix "
-            "changes the displayed images; it does not download new telemetry."
-        )
+        if selected_session == "Race":
+            charts = public_race_charts + [
+                (
+                    "f1_circuit_speed_map.png",
+                    "Circuit speed map — FastF1 session data",
+                ),
+                (
+                    "f1_telemetry_analysis.png",
+                    "Car telemetry — FastF1 session data",
+                ),
+                (
+                    "f1_driver_comparison.png",
+                    "Driver comparison — FastF1 session data",
+                ),
+            ]
+
+            st.subheader("Race analysis")
+
+            st.caption(
+                "Public race charts use recorded lap times and positions. "
+                "They do not contain speed, throttle, brake, gear, or GPS "
+                "telemetry. FastF1 charts appear only where those files "
+                "were actually generated."
+            )
+        else:
+            charts = standard_charts
+            st.subheader("Qualifying telemetry analysis")
+
+        existing_charts = [
+            (filename, caption)
+            for filename, caption in charts
+            if (race_folder / filename).is_file()
+        ]
+
+        if not existing_charts:
+            st.warning(
+                "No charts were found for this session. "
+                "Check the saved files under the images folder."
+            )
+
+        for filename, caption in existing_charts:
+            image_path = race_folder / filename
+
+            st.markdown(f"### {caption}")
+            st.image(
+                str(image_path),
+                caption=caption,
+                width="stretch",
+            )
+
+            with st.expander(f"Download {caption}"):
+                st.download_button(
+                    label=f"Download {caption} (PNG)",
+                    data=image_path.read_bytes(),
+                    file_name=filename,
+                    mime="image/png",
+                    key=f"download_{race_folder.name}_{filename}",
+                )
+
+            st.divider()
 
     # Don't execute any live-data code in saved-analysis mode.
     st.stop()
@@ -1274,7 +1668,7 @@ st.download_button(
     key="download_comparison"
 )
 
-with laps_tab:
+with st.container():
     timed_laps = session.laps.dropna(
         subset=["Driver", "LapTime"]
     ).copy()
