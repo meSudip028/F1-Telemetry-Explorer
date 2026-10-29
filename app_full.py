@@ -10,6 +10,7 @@ import json
 import urllib.error
 import urllib.request
 import urllib.parse
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -123,74 +124,52 @@ def slugify(value):
     ).strip("-")
 
 # ------------------------------------------------------------
-# 2022 Grand Prix results from the Jolpica F1 API
+# ------------------------------------------------------------
+# Multi-season Grand Prix results from the Jolpica F1 API
 # ------------------------------------------------------------
 
-JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1/2022"
-
-ROUND_BY_RACE_SLUG = {
-    "bahrain": 1,
-    "saudi-arabian": 2,
-    "australian": 3,
-    "emilia-romagna": 4,
-    "miami": 5,
-    "spanish": 6,
-    "monaco": 7,
-    "azerbaijan": 8,
-    "canadian": 9,
-    "british": 10,
-    "austrian": 11,
-    "french": 12,
-    "hungarian": 13,
-    "belgian": 14,
-    "dutch": 15,
-    "italian": 16,
-    "singapore": 17,
-    "japanese": 18,
-    "united-states": 19,
-    "mexico-city": 20,
-    "sao-paulo": 21,
-    "abu-dhabi": 22,
-}
+JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1"
 
 
-def get_2022_round(folder_name):
-    """Get the official 2022 round number from a saved race folder."""
-    race_slug = str(folder_name).lower().removeprefix("2022-")
-    race_slug = re.sub(
-        r"-grand-prix-(qualifying|race)$",
-        "",
-        race_slug
+def normalize_race_slug(value):
+    """Normalize race names for matching API names to image folders."""
+    value = unicodedata.normalize("NFKD", str(value))
+    value = "".join(
+        char for char in value
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def parse_saved_folder(folder_name):
+    """Return the season, event slug, and session from a saved folder."""
+    match = re.fullmatch(
+        r"(?P<year>\d{4})-(?P<event>.+)-(?P<session>qualifying|race)",
+        str(folder_name).lower(),
     )
 
-    if race_slug not in ROUND_BY_RACE_SLUG:
+    if not match:
         raise DataProblem(
-            f"Cannot identify the 2022 race round for: {folder_name}"
+            f"Unrecognized saved session folder: {folder_name}"
         )
 
-    return ROUND_BY_RACE_SLUG[race_slug]
+    session = match.group("session").title()
+
+    return (
+        int(match.group("year")),
+        match.group("event"),
+        session,
+    )
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def fetch_2022_results(round_number, session_type):
-    """Fetch qualifying or race results for one 2022 Grand Prix."""
-    endpoint_by_session = {
-        "Qualifying": "qualifying",
-        "Race": "results",
-    }
-
-    if session_type not in endpoint_by_session:
-        raise ValueError("Session must be Qualifying or Race.")
-
-    endpoint = endpoint_by_session[session_type]
-    url = (
-        f"{JOLPICA_BASE_URL}/{round_number}/"
-        f"{endpoint}/?limit=100"
-    )
+def fetch_season_races(year):
+    """Fetch the race schedule for a season and cache it for one day."""
+    url = f"{JOLPICA_BASE_URL}/{int(year)}/races/?limit=100"
 
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "F1-Telemetry-Explorer"}
+        headers={"User-Agent": "F1-Telemetry-Explorer/1.0"},
     )
 
     try:
@@ -203,8 +182,79 @@ def fetch_2022_results(round_number, session_type):
         json.JSONDecodeError,
     ) as error:
         raise DataProblem(
-            f"Could not load {session_type.lower()} results. "
-            "Please try again later."
+            f"Could not load the {year} race schedule."
+        ) from error
+
+    races = (
+        payload.get("MRData", {})
+        .get("RaceTable", {})
+        .get("Races", [])
+    )
+
+    if not races:
+        raise DataProblem(
+            f"No races were returned for the {year} season."
+        )
+
+    return races
+
+
+def get_race_round(year, folder_name):
+    """Match a saved folder to its official season round."""
+    folder_year, event_slug, _ = parse_saved_folder(folder_name)
+
+    if folder_year != int(year):
+        raise DataProblem(
+            f"Folder season {folder_year} does not match {year}."
+        )
+
+    target_slug = normalize_race_slug(event_slug)
+
+    for race in fetch_season_races(year):
+        race_name = race.get("raceName", "")
+
+        if normalize_race_slug(race_name) == target_slug:
+            return int(race["round"])
+
+    raise DataProblem(
+        f"Could not match {folder_name} to a race in {year}."
+    )
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_results(year, round_number, session_type):
+    """Fetch qualifying or race results for any season."""
+    endpoint_by_session = {
+        "Qualifying": "qualifying",
+        "Race": "results",
+    }
+
+    if session_type not in endpoint_by_session:
+        raise ValueError("Session must be Qualifying or Race.")
+
+    endpoint = endpoint_by_session[session_type]
+    url = (
+        f"{JOLPICA_BASE_URL}/{int(year)}/{int(round_number)}/"
+        f"{endpoint}/?limit=100"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "F1-Telemetry-Explorer/1.0"},
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+    ) as error:
+        raise DataProblem(
+            f"Could not load {session_type.lower()} results "
+            f"for {year}."
         ) from error
 
     races = (
@@ -216,11 +266,19 @@ def fetch_2022_results(round_number, session_type):
     if not races:
         raise DataProblem(
             f"No {session_type.lower()} results were returned "
-            f"for round {round_number}."
+            f"for round {round_number} of {year}."
         )
 
     return races[0]
 
+
+# Backward-compatible wrappers for the existing 2022 gallery.
+def get_2022_round(folder_name):
+    return get_race_round(2022, folder_name)
+
+
+def fetch_2022_results(round_number, session_type):
+    return fetch_results(2022, round_number, session_type)
 # ------------------------------------------------------------
 # Driver portrait lookup using the Wikipedia page-image API
 # ------------------------------------------------------------
@@ -684,60 +742,75 @@ if data_mode == "Browse saved analyses":
         # Choose a Grand Prix and session from saved analyses
         # --------------------------------------------------------
 
+               # --------------------------------------------------------
+        # Select season, Grand Prix, and session
+        # --------------------------------------------------------
+
         available_gp_sessions = {}
 
         for folder in sorted(IMAGE_DIR.iterdir()):
             if not folder.is_dir():
                 continue
 
-            folder_name = folder.name
-
-            if not folder_name.startswith("2022-"):
+            try:
+                folder_year, event_slug, session_type = (
+                    parse_saved_folder(folder.name)
+                )
+            except (DataProblem, ValueError):
                 continue
 
-            if folder_name.endswith("-qualifying"):
-                session_type = "Qualifying"
-                gp_slug = folder_name[5:-len("-qualifying")]
-            elif folder_name.endswith("-race"):
-                session_type = "Race"
-                gp_slug = folder_name[5:-len("-race")]
-            else:
-                continue
+            gp_short_name = event_slug.removesuffix("-grand-prix")
+            gp_label = (
+                f"{gp_short_name.replace('-', ' ').title()} Grand Prix"
+            )
 
-            gp_short_name = gp_slug.removesuffix("-grand-prix")
-            gp_label = f"{gp_short_name.replace('-', ' ').title()} Grand Prix"
-
-            available_gp_sessions.setdefault(gp_label, {})[
-                session_type
-            ] = folder_name
+            available_gp_sessions.setdefault(
+                folder_year, {}
+            ).setdefault(gp_label, {})[session_type] = folder.name
 
         if not available_gp_sessions:
-            st.warning("No saved 2022 Grand Prix folders were found.")
+            st.warning("No saved Grand Prix sessions were found.")
             st.stop()
+
+        available_years = sorted(
+            available_gp_sessions.keys(),
+            reverse=True,
+        )
+
+        selected_year = st.sidebar.selectbox(
+            "Select a season",
+            available_years,
+            key="saved_season",
+        )
+
+        races_for_year = available_gp_sessions[selected_year]
 
         selected_gp = st.sidebar.selectbox(
             "Select a Grand Prix",
-            sorted(available_gp_sessions.keys()),
+            sorted(races_for_year.keys()),
+            key=f"saved_gp_{selected_year}",
         )
 
         session_options = [
-            item
-            for item in ["Qualifying", "Race"]
-            if item in available_gp_sessions[selected_gp]
+            session
+            for session in ["Qualifying", "Race"]
+            if session in races_for_year[selected_gp]
         ]
 
         selected_session = st.sidebar.radio(
             "Choose session",
             session_options,
             horizontal=True,
+            key=f"saved_session_{selected_year}_{normalize_race_slug(selected_gp)}",
         )
 
         race_folder = (
             IMAGE_DIR
-            / available_gp_sessions[selected_gp][selected_session]
+            / races_for_year[selected_gp][selected_session]
         )
 
-        st.header(f"2022 {selected_gp}")
+        st.header(f"{selected_year} {selected_gp}")
+        st.caption(f"Selected session: {selected_session}")
         st.caption(f"Selected session: {selected_session}")
 
         # --------------------------------------------------------
@@ -747,11 +820,15 @@ if data_mode == "Browse saved analyses":
         results = []
 
         try:
-            round_number = get_2022_round(race_folder.name)
-            result_data = fetch_2022_results(
-                round_number,
-                selected_session,
-            )
+            round_number = get_race_round(
+             selected_year,
+             race_folder.name,
+        )
+            result_data = fetch_results(
+    selected_year,
+    round_number,
+    selected_session,
+)
 
             if selected_session == "Qualifying":
                 results = result_data.get("QualifyingResults", [])
@@ -876,24 +953,43 @@ if data_mode == "Browse saved analyses":
         # Display only charts which exist for the chosen session
         # --------------------------------------------------------
 
-        standard_charts = [
+              # --------------------------------------------------------
+        # Display charts for the selected year and session
+        # --------------------------------------------------------
+
+        standard_qualifying_charts = [
             ("f1_circuit_speed_map.png", "Circuit speed map"),
             ("f1_telemetry_analysis.png", "Telemetry analysis"),
             ("f1_driver_comparison.png", "Driver comparison"),
         ]
 
+        public_qualifying_charts = [
+            (
+                "qualifying_q1_times.png",
+                "Qualifying Q1 — Lap-time comparison",
+            ),
+            (
+                "qualifying_q2_times.png",
+                "Qualifying Q2 — Lap-time comparison",
+            ),
+            (
+                "qualifying_q3_times.png",
+                "Qualifying Q3 — Lap-time comparison",
+            ),
+        ]
+
         public_race_charts = [
             (
                 "race_position_progression.png",
-                "Race position progression — public lap timing",
+                "Race position progression — public timing data",
             ),
             (
                 "race_lap_time_progression.png",
-                "Race lap-time progression — public lap timing",
+                "Race lap-time progression — public timing data",
             ),
             (
                 "race_fastest_lap_comparison.png",
-                "Fastest recorded lap comparison — public lap timing",
+                "Fastest recorded lap comparison — public timing data",
             ),
         ]
 
@@ -914,15 +1010,23 @@ if data_mode == "Browse saved analyses":
             ]
 
             st.subheader("Race analysis")
-
             st.caption(
-                "Public race charts use recorded lap times and positions. "
-                "They do not contain speed, throttle, brake, gear, or GPS "
-                "telemetry. FastF1 charts appear only where those files "
-                "were actually generated."
+                "Public Race charts use recorded lap times and positions, "
+                "not high-frequency car telemetry. FastF1 charts appear "
+                "only when those files are available."
             )
+
+        elif (race_folder / "qualifying_q1_times.png").is_file():
+            charts = public_qualifying_charts
+            st.subheader("Qualifying lap-time analysis")
+            st.caption(
+                "These charts use public qualifying results for Q1, Q2, "
+                "and Q3. They are not speed, throttle, brake, gear, "
+                "or GPS telemetry."
+            )
+
         else:
-            charts = standard_charts
+            charts = standard_qualifying_charts
             st.subheader("Qualifying telemetry analysis")
 
         existing_charts = [
@@ -941,6 +1045,7 @@ if data_mode == "Browse saved analyses":
             image_path = race_folder / filename
 
             st.markdown(f"### {caption}")
+
             st.image(
                 str(image_path),
                 caption=caption,
@@ -957,6 +1062,7 @@ if data_mode == "Browse saved analyses":
                 )
 
             st.divider()
+        
 
     # Don't execute any live-data code in saved-analysis mode.
     st.stop()

@@ -1,0 +1,5 @@
+2023 race analysis data source
+Source: Jolpica-F1 public timing/classification API.
+
+These charts use lap times and recorded race positions. They do not contain high-frequency car telemetry such as speed, throttle, brake, gear, or GPS position.
+Position progression uses recorded position by lap; lap-time progression may include pit-stop, traffic, and safety-car spikes. Fastest recorded lap is computed from available timing rows and may differ from the official fastest-lap classification.

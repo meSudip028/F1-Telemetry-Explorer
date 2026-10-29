@@ -1,0 +1,4 @@
+2023 qualifying analysis data source
+Source: Jolpica-F1 public qualifying classification API.
+
+These charts show reported Q1, Q2, and Q3 lap times separately. They are public result data, not high-frequency car telemetry such as speed, throttle, brake, gear, or GPS position.

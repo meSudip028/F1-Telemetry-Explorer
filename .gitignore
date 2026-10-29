@@ -37,3 +37,6 @@ race_lap_analysis_2022_report.txt
 
 # Older local generator replaced by the public-data generator
 generate_2022_race_charts.py
+
+# Multi-season chart generation report
+public_session_charts_2023_report.txt
