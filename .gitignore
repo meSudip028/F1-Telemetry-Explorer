@@ -24,3 +24,16 @@ env/
 
 # Local FastF1 cache
 fastf1_cache/
+
+# Local development backups
+*.backup-*
+
+# Generated FastF1 session outputs
+f1_outputs/
+
+# Local generation reports
+race_generation_2022_report.txt
+race_lap_analysis_2022_report.txt
+
+# Older local generator replaced by the public-data generator
+generate_2022_race_charts.py
