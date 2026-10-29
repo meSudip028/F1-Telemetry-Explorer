@@ -120,6 +120,41 @@ Open the local address displayed in your terminal.
 
 The saved-analysis gallery can display the committed charts without downloading the entire season's telemetry again. Loading new live FastF1 sessions may have additional data-access or authentication requirements.
 
+## ♻️ Regenerate Public Race Charts
+
+The project includes a script that generates race-analysis charts for the 2022 Formula 1 season using public Jolpica-F1 lap timing and classification data.
+
+### Generate charts for one Grand Prix
+
+From the project root, run:
+
+```bash
+python generate_2022_public_race_charts.py --round 1
+```
+
+The round number identifies the Grand Prix in the 2022 calendar. For example, round `1` is Bahrain and round `19` is the United States Grand Prix.
+
+### Generate charts for the full season
+
+```bash
+python generate_2022_public_race_charts.py --all
+```
+
+The script processes all 22 Grands Prix and saves the charts under the corresponding folders in `images/`.
+
+### Generated charts
+
+Each Race folder contains:
+
+- `race_position_progression.png` — recorded position progression for the top classified drivers.
+- `race_lap_time_progression.png` — recorded lap-time progression for leading finishers.
+- `race_fastest_lap_comparison.png` — comparison of available fastest recorded lap times.
+- `RACE_DATA_SOURCE.txt` — a note describing the data source.
+
+**Data accuracy note:** These charts use public lap timing and classification data. They are not high-frequency car telemetry and do not contain speed, throttle, brake, gear, or GPS measurements.
+
+The generation report is written locally to `race_lap_analysis_2022_report.txt`.
+
 ## 📂 Project Structure
 
 ```text
