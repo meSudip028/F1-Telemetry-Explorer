@@ -177,11 +177,11 @@ The notebook also treats the Boolean brake channel as an on/off signal when appl
 
 ## 🔮 Future Improvements
 
-- Build an interactive dashboard using Streamlit.
-- Add dropdowns for season, Grand Prix, session, and driver selection.
-- Support browsing and comparing multiple races from an interactive interface.
+- Add more Grand Prix sessions and seasons to the saved-analysis gallery.
 - Improve lap validation and time-gap analysis.
-- Deploy a public web application.
+- Add automated tests for data processing and analysis helpers.
+- Enhance dashboard performance and error handling.
+
 
 ## ⚠️ Data and Disclaimer
 
