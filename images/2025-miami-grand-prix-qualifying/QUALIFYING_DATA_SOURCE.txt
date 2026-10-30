@@ -1,0 +1,8 @@
+2025 qualifying analysis data source
+Source: Jolpica-F1 public qualifying classification API.
+
+These charts show Q1, Q2, and Q3 lap times separately. They are public result data, not high-frequency car telemetry such as speed, throttle, brake, gear, or GPS.
+
+Miami 2025 fallback:
+Qualifying times were taken from the official FIA Final Qualifying Classification because Jolpica returned blank time fields.
+Official source: https://www.fia.com/system/files/decision-document/2025_miami_grand_prix_-_final_qualifying_classification.pdf

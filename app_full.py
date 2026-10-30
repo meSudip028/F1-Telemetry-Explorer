@@ -823,28 +823,49 @@ def get_schedule(year):
     return fastf1.get_event_schedule(year)
 
 
+
 @st.cache_resource(show_spinner=False)
 def load_session(year, event_name, session_name):
-    """Load a session once and reuse it during dashboard interactions."""
+    """Load a FastF1 session and validate that lap data is available."""
+
     session = fastf1.get_session(
         year,
         event_name,
-        session_name
+        session_name,
     )
 
-    session.load(
-        laps=True,
-        telemetry=True,
-        weather=False,
-        messages=False
-    )
+    try:
+        session.load(
+            laps=True,
+            telemetry=True,
+            weather=False,
+            messages=False,
+        )
 
-    laps = session.laps
+        laps = session.laps
+
+    except Exception as error:
+        error_name = type(error).__name__
+
+        if error_name == "DataNotLoadedError":
+            raise DataProblem(
+                "FastF1 could not retrieve archived lap and timing data. "
+                "This may be because the F1 TV subscription required "
+                "for archived data is inactive or the archive is "
+                "temporarily unavailable. Choose Browse saved analyses "
+                "to access the available historical data."
+            ) from error
+
+        raise
 
     if laps is None or laps.empty:
-        raise DataProblem("The selected session contains no lap data.")
+        raise DataProblem(
+            "The selected session loaded without usable lap data. "
+            "Try Browse saved analyses instead."
+        )
 
     return session
+
 
 
 # ------------------------------------------------------------

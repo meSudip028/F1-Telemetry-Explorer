@@ -333,6 +333,64 @@ def save_qualifying_charts(race_name: str, results: list[dict[str, Any]], outdir
         finish_chart(fig, outdir / filename)
 
 
+def apply_miami_2025_qualifying_fallback(
+    results: list[dict[str, Any]],
+) -> bool:
+    """Use official FIA qualifying times when Miami's Jolpica fields are blank."""
+
+    official_times = {
+        "verstappen": ("1:26.870", "1:26.643", "1:26.204"),
+        "norris": ("1:26.955", "1:26.499", "1:26.269"),
+        "antonelli": ("1:27.077", "1:26.606", "1:26.271"),
+        "piastri": ("1:27.006", "1:26.269", "1:26.375"),
+        "russell": ("1:27.014", "1:26.575", "1:26.385"),
+        "sainz": ("1:27.098", "1:26.847", "1:26.569"),
+        "albon": ("1:27.042", "1:26.855", "1:26.682"),
+        "leclerc": ("1:27.417", "1:26.948", "1:26.754"),
+        "ocon": ("1:27.450", "1:26.967", "1:26.824"),
+        "tsunoda": ("1:27.298", "1:26.959", "1:26.943"),
+        "hadjar": ("1:27.301", "1:26.987", None),
+        "hamilton": ("1:27.279", "1:27.006", None),
+        "bortoleto": ("1:27.343", "1:27.151", None),
+        "doohan": ("1:27.422", "1:27.186", None),
+        "lawson": ("1:27.444", "1:27.363", None),
+        "hulkenberg": ("1:27.473", None, None),
+        "alonso": ("1:27.604", None, None),
+        "gasly": ("1:27.710", None, None),
+        "stroll": ("1:27.830", None, None),
+        "bearman": ("1:27.999", None, None),
+    }
+
+    matched = set()
+
+    for result in results:
+        driver = result.get("Driver", {})
+        driver_key = slugify(driver.get("familyName", ""))
+
+        times = official_times.get(driver_key)
+
+        if times is None:
+            continue
+
+        result["Q1"], result["Q2"], result["Q3"] = times
+        matched.add(driver_key)
+
+    missing = set(official_times) - matched
+
+    if missing:
+        raise RuntimeError(
+            "Miami fallback could not match these drivers: "
+            + ", ".join(sorted(missing))
+        )
+
+    print(
+        "Applied official FIA qualifying-time fallback "
+        f"for all {len(matched)} Miami drivers."
+    )
+
+    return True
+
+
 def process_session(year: int, race_event: dict[str, Any], session: str, force: bool = False) -> str:
     round_number = int(race_event["round"])
     race_name = race_event.get("raceName", f"Round {round_number}")
@@ -342,6 +400,7 @@ def process_session(year: int, race_event: dict[str, Any], session: str, force: 
     folder_name = f"{year}-{slug}-grand-prix-{session}"
     output_folder = IMAGE_DIR / folder_name
     chart_files = QUALIFYING_CHARTS if session == "qualifying" else RACE_CHARTS
+    qualifying_fallback_used = False
 
     if not force and all((output_folder / filename).is_file() for filename in chart_files):
         print(f"SKIP: {year} {race_name} — {session}, charts already exist.")
@@ -355,10 +414,24 @@ def process_session(year: int, race_event: dict[str, Any], session: str, force: 
         names, classified = classification_metadata(classification)
         rows = fetch_all_lap_timings(year, round_number)
     else:
-        qualifying = fetch_session_results(year, round_number, "qualifying")
-        results = qualifying.get("QualifyingResults", [])
-        if not results:
-            raise RuntimeError("No qualifying result rows returned.")
+            qualifying = fetch_session_results(
+                year, round_number, "qualifying"
+            )
+
+            results = qualifying.get("QualifyingResults", [])
+
+            if not results:
+                raise RuntimeError("No qualifying result rows returned.")
+
+            q1_available = any(
+                str(item.get("Q1") or "").strip()
+                for item in results
+            )
+
+            if year == 2025 and round_number == 6 and not q1_available:
+                qualifying_fallback_used = (
+                    apply_miami_2025_qualifying_fallback(results)
+                )
 
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".chart-build-", dir=IMAGE_DIR) as temp_dir:
@@ -372,14 +445,34 @@ def process_session(year: int, race_event: dict[str, Any], session: str, force: 
                 "Position progression uses recorded position by lap; lap-time progression may include pit-stop, traffic, and safety-car spikes. Fastest recorded lap is computed from available timing rows and may differ from the official fastest-lap classification.\n",
                 encoding="utf-8",
             )
+
         else:
             save_qualifying_charts(race_name, results, temp_folder)
-            (temp_folder / "QUALIFYING_DATA_SOURCE.txt").write_text(
+
+            qualifying_source_note = (
                 f"{year} qualifying analysis data source\n"
                 "Source: Jolpica-F1 public qualifying classification API.\n\n"
-                "These charts show reported Q1, Q2, and Q3 lap times separately. They are public result data, not high-frequency car telemetry such as speed, throttle, brake, gear, or GPS position.\n",
+                "These charts show Q1, Q2, and Q3 lap times separately. "
+                "They are public result data, not high-frequency car "
+                "telemetry such as speed, throttle, brake, gear, or GPS.\n"
+            )
+
+            if qualifying_fallback_used:
+                qualifying_source_note += (
+                    "\nMiami 2025 fallback:\n"
+                    "Qualifying times were taken from the official FIA "
+                    "Final Qualifying Classification because Jolpica "
+                    "returned blank time fields.\n"
+                    "Official source: "
+                    "https://www.fia.com/system/files/decision-document/"
+                    "2025_miami_grand_prix_-_final_qualifying_classification.pdf\n"
+                )
+
+            (temp_folder / "QUALIFYING_DATA_SOURCE.txt").write_text(
+                qualifying_source_note,
                 encoding="utf-8",
             )
+
 
         output_folder.mkdir(parents=True, exist_ok=True)
         for filename in chart_files:
