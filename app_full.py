@@ -272,6 +272,178 @@ def fetch_results(year, round_number, session_type):
     return races[0]
 
 
+# ------------------------------------------------------------
+# Historical F1 championship standings
+# ------------------------------------------------------------
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_championship_standings(year, category):
+    """Fetch historical driver or constructor championship standings."""
+
+    category = str(category).strip().lower()
+
+    endpoint_by_category = {
+        "drivers": "driverStandings",
+        "constructors": "constructorStandings",
+    }
+
+    if category not in endpoint_by_category:
+        raise ValueError(
+            "Category must be 'drivers' or 'constructors'."
+        )
+
+    endpoint = endpoint_by_category[category]
+
+    url = (
+        f"{JOLPICA_BASE_URL}/{int(year)}/"
+        f"{endpoint}/?limit=100"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "F1-Telemetry-Explorer/1.0"
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+    ) as error:
+        raise DataProblem(
+            f"Could not load {year} {category} championship standings."
+        ) from error
+
+    standings_lists = (
+        payload.get("MRData", {})
+        .get("StandingsTable", {})
+        .get("StandingsLists", [])
+    )
+
+    if not standings_lists:
+        raise DataProblem(
+            f"No {year} {category} standings were returned."
+        )
+
+    result_key = (
+        "DriverStandings"
+        if category == "drivers"
+        else "ConstructorStandings"
+    )
+
+    standings = standings_lists[0].get(result_key, [])
+
+    if not standings:
+        raise DataProblem(
+            f"No {year} {category} standings were available."
+        )
+
+    return standings
+
+
+# ------------------------------------------------------------
+# Historical race podium statistics
+# ------------------------------------------------------------
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_season_podium_statistics(year):
+    """Count driver and constructor podiums from all race results."""
+
+    from collections import defaultdict
+    import time
+
+    driver_podiums = defaultdict(int)
+    constructor_podiums = defaultdict(int)
+
+    seen_results = set()
+    race_rounds = set()
+
+    limit = 100
+    offset = 0
+    total = None
+
+    while total is None or offset < total:
+        url = (
+            f"{JOLPICA_BASE_URL}/{int(year)}/results/"
+            f"?limit={limit}&offset={offset}"
+        )
+
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "F1-Telemetry-Explorer/1.0"}
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.load(response)
+
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+        ) as error:
+            raise DataProblem(
+                f"Could not load {year} race results for podium counts."
+            ) from error
+
+        metadata = payload.get("MRData", {})
+        total = int(metadata.get("total", 0))
+        actual_limit = int(metadata.get("limit", limit))
+
+        races = (
+            metadata.get("RaceTable", {})
+            .get("Races", [])
+        )
+
+        if not races or actual_limit <= 0:
+            break
+
+        for race in races:
+            round_number = race.get("round")
+            race_rounds.add(round_number)
+
+            for result in race.get("Results", []):
+                try:
+                    position = int(result["position"])
+                except (KeyError, ValueError, TypeError):
+                    continue
+
+                if position not in (1, 2, 3):
+                    continue
+
+                driver_id = result["Driver"]["driverId"]
+                constructor_id = (
+                    result["Constructor"]["constructorId"]
+                )
+
+                result_key = (round_number, driver_id)
+
+                if result_key in seen_results:
+                    continue
+
+                seen_results.add(result_key)
+
+                driver_podiums[driver_id] += 1
+                constructor_podiums[constructor_id] += 1
+
+        offset += actual_limit
+
+        if offset < total:
+            time.sleep(0.2)
+
+    return {
+        "drivers": dict(driver_podiums),
+        "constructors": dict(constructor_podiums),
+        "race_count": len(race_rounds),
+    }
+
+
+
 # Backward-compatible wrappers for the existing 2022 gallery.
 def get_2022_round(folder_name):
     return get_race_round(2022, folder_name)
@@ -700,7 +872,11 @@ st.sidebar.title("Explore F1 Data")
 
 data_mode = st.sidebar.radio(
     "Choose data source",
-    ["Browse saved analyses", "Load a new F1 session"],
+    [
+        "Browse saved analyses",
+        "Championship Comparison",
+        "Load a new F1 session",
+    ],
     index=0,
 )
 
@@ -1066,6 +1242,287 @@ if data_mode == "Browse saved analyses":
 
     # Don't execute any live-data code in saved-analysis mode.
     st.stop()
+
+
+
+elif data_mode == "Championship Comparison":
+
+    st.title("🏆 F1 Championship Comparison")
+
+    st.caption(
+        "Compare the final Formula 1 Drivers and Constructors "
+        "Championship standings between 2022 and 2023."
+    )
+
+    category = st.radio(
+        "Choose championship",
+        ["Drivers", "Constructors"],
+        horizontal=True,
+        key="championship_category",
+    )
+
+    # --------------------------------------------------------
+    # Load championship data
+    # --------------------------------------------------------
+
+    try:
+        with st.spinner("Loading historical championship standings..."):
+
+            standings_2022 = fetch_championship_standings(
+                2022, category
+            )
+
+            standings_2023 = fetch_championship_standings(
+                2023, category
+            )
+
+            podium_stats_2022 = fetch_season_podium_statistics(2022)
+            podium_stats_2023 = fetch_season_podium_statistics(2023)
+
+    except Exception as error:
+        st.error(f"Could not load championship data: {error}")
+        st.stop()
+
+    # --------------------------------------------------------
+    # Prepare championship rows
+    # --------------------------------------------------------
+
+    def make_championship_rows(
+        standings,
+        category,
+        podium_statistics,
+    ):
+        rows = []
+
+        stats_key = (
+            "drivers" if category == "Drivers"
+            else "constructors"
+        )
+
+        podium_lookup = podium_statistics.get(stats_key, {})
+
+        for item in standings:
+
+            if category == "Drivers":
+                participant = item["Driver"]
+
+                name = (
+                    f"{participant.get('givenName', '')} "
+                    f"{participant.get('familyName', '')}"
+                ).strip()
+
+                participant_id = participant["driverId"]
+
+                team = item.get(
+                    "Constructors", [{}]
+                )[0].get("name", "Unknown")
+
+            else:
+                participant = item["Constructor"]
+
+                name = participant.get("name", "Unknown")
+                participant_id = participant["constructorId"]
+                team = name
+
+            rows.append({
+                "Position": int(item["position"]),
+                "Name": name,
+                "Team": team,
+                "Points": float(item["points"]),
+                "Wins": int(item["wins"]),
+                "Podiums": int(
+                    podium_lookup.get(participant_id, 0)
+                ),
+            })
+
+        return rows
+
+    # IMPORTANT: These calls must be OUTSIDE the function above.
+
+    rows_2022 = make_championship_rows(
+        standings_2022,
+        category,
+        podium_stats_2022,
+    )
+
+    rows_2023 = make_championship_rows(
+        standings_2023,
+        category,
+        podium_stats_2023,
+    )
+
+    if not rows_2022 or not rows_2023:
+        st.error("Championship standings are empty.")
+        st.stop()
+
+    # --------------------------------------------------------
+    # Season champions
+    # --------------------------------------------------------
+
+    st.subheader("🏆 Season Champions")
+
+    champion_columns = st.columns(2)
+
+    for column, year, rows in zip(
+        champion_columns,
+        [2022, 2023],
+        [rows_2022, rows_2023],
+    ):
+
+        champion = rows[0]
+
+        with column:
+            with st.container(border=True):
+
+                st.caption(f"{year} {category[:-1]} Champion")
+
+                st.markdown(f"## 🏆 {champion['Name']}")
+
+                st.write(champion["Team"])
+
+                metric_col1, metric_col2 = st.columns(2)
+
+                metric_col1.metric(
+                    "Championship Points",
+                    f"{champion['Points']:,.0f}",
+                )
+
+                metric_col2.metric(
+                    "Race Wins",
+                    champion["Wins"],
+                )
+
+                st.metric(
+                    "Podiums",
+                    champion["Podiums"],
+                )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Full championship standings
+    # --------------------------------------------------------
+
+    st.subheader(f"{category} Standings")
+
+    tab_2022, tab_2023 = st.tabs(
+        ["2022 Season", "2023 Season"]
+    )
+
+    with tab_2022:
+        st.dataframe(
+            pd.DataFrame(rows_2022),
+            hide_index=True,
+            width="stretch",
+        )
+
+    with tab_2023:
+        st.dataframe(
+            pd.DataFrame(rows_2023),
+            hide_index=True,
+            width="stretch",
+        )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Points comparison
+    # --------------------------------------------------------
+
+    st.subheader("📊 2022 vs 2023 Points Comparison")
+
+    points_2022 = {
+        item["Name"]: item["Points"]
+        for item in rows_2022
+    }
+
+    points_2023 = {
+        item["Name"]: item["Points"]
+        for item in rows_2023
+    }
+
+    all_names = set(points_2022) | set(points_2023)
+
+    sorted_names = sorted(
+        all_names,
+        key=lambda name: (
+            points_2022.get(name, 0)
+            + points_2023.get(name, 0)
+        ),
+        reverse=True,
+    )
+
+    comparison_df = pd.DataFrame([
+        {
+            "Name": name,
+            "2022 Points": points_2022.get(name, 0),
+            "2023 Points": points_2023.get(name, 0),
+        }
+        for name in sorted_names
+    ])
+
+    st.bar_chart(
+        comparison_df.set_index("Name"),
+        height=500,
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Podium comparison
+    # --------------------------------------------------------
+
+    st.subheader("🥉 2022 vs 2023 Podium Comparison")
+
+    podiums_2022 = {
+        item["Name"]: item["Podiums"]
+        for item in rows_2022
+    }
+
+    podiums_2023 = {
+        item["Name"]: item["Podiums"]
+        for item in rows_2023
+    }
+
+    all_participants = set(podiums_2022) | set(podiums_2023)
+
+    podium_comparison_df = pd.DataFrame([
+        {
+            "Name": name,
+            "2022 Podiums": podiums_2022.get(name, 0),
+            "2023 Podiums": podiums_2023.get(name, 0),
+        }
+        for name in sorted(
+            all_participants,
+            key=lambda name: (
+                podiums_2022.get(name, 0)
+                + podiums_2023.get(name, 0)
+            ),
+            reverse=True,
+        )
+    ])
+
+    st.bar_chart(
+        podium_comparison_df.set_index("Name"),
+        height=500,
+    )
+
+    st.caption(
+        "Podium counts are calculated from official race finishing "
+        "positions 1–3 across all completed race weekends."
+    )
+
+    st.caption(
+        "These are final season championship totals. "
+        "A value of zero means the driver or constructor "
+        "did not score points in that season."
+    )
+
+    st.success("Championship comparison loaded successfully.")
+
+    st.stop()
+
+
 
 st.warning(
     "Loading a new F1 session may require eligible F1 TV access. "
