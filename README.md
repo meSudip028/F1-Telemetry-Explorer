@@ -1,6 +1,6 @@
 # 🏎️ F1 Telemetry Explorer
 
-An interactive Formula 1 data analysis project built with Python. Explore the **complete 2022 F1 season** through qualifying telemetry, race lap-time analysis, driver comparisons, and session results.
+An interactive Formula 1 data analysis project built with Python. Explore the 2022 and 2023 Formula 1 seasons through qualifying analysis, race lap-time progression, driver comparisons, session results, and winner spotlights.
 
 ## 🏁 Project Overview
 
@@ -10,7 +10,7 @@ An interactive Formula 1 data analysis project built with Python. Explore the **
 
 🌐 **[Try the Live Dashboard](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/)**
 
-F1 Telemetry Explorer is a Streamlit dashboard for exploring the 22 Grands Prix of the 2022 Formula 1 season.
+F1 Telemetry Explorer is a Streamlit dashboard covering 22 Grands Prix from 2022 and 22 Grands Prix from 2023.
 
 Choose a Grand Prix, switch between **Qualifying** and **Race**, view the top three drivers, and explore the corresponding visualizations.
 
@@ -185,9 +185,9 @@ The `images/` directory stores the saved analyses by Grand Prix and session.
 - Automating the generation of charts for an entire racing season.
 - Managing project versions and deploying an application through GitHub.
 
-## 🏎️ 2022 Season Explorer
+## 🏎️ 2022–2023 Season Explorer
 
-Explore all 22 Grands Prix from the 2022 Formula 1 season with separate Qualifying and Race analysis.
+Explore 44 Grand Prix sessions across the 2022 and 2023 Formula 1 seasons, with separate Qualifying and Race analysis.
 
 ### Session Selection
 
@@ -195,6 +195,11 @@ Choose any Grand Prix and switch between:
 
 - **Qualifying:** Qualifying results, pole-position spotlight, circuit speed map, car telemetry, and driver comparisons.
 - **Race:** Official race top three, race-winner spotlight, lap-time progression, race-position progression, and fastest-lap comparisons.
+### Qualifying Analysis
+
+- **2022:** Circuit speed maps, car telemetry, and driver comparisons.
+- **2023:** Q1, Q2, and Q3 lap-time comparison charts.
+- Official qualifying classifications and pole-position spotlights.
 
 ### Race Analysis
 
@@ -246,7 +251,7 @@ Explore driver position changes, lap-time progression, and fastest recorded laps
 
 ## 🔮 Future Improvements
 
-- Expand the explorer to additional Formula 1 seasons.
+- Expand the explorer to the 2024 and subsequent Formula 1 seasons.
 - Add automated tests for data processing and result validation.
 - Improve chart performance, accessibility, and error handling.
 - Expand session-specific comparisons wherever reliable data is available.
