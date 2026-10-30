@@ -20,6 +20,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from matplotlib.collections import LineCollection
+from driver_profiles import combine_driver_seasons
 
 
 # ------------------------------------------------------------
@@ -276,6 +277,7 @@ def fetch_results(year, round_number, session_type):
 # Historical F1 championship standings
 # ------------------------------------------------------------
 
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_championship_standings(year, category):
     """Fetch historical driver or constructor championship standings."""
@@ -307,8 +309,17 @@ def fetch_championship_standings(year, category):
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+        ) as response:
             payload = json.load(response)
+
+    except urllib.error.HTTPError as error:
+        raise DataProblem(
+            f"Could not load {year} {category} championship "
+            f"standings (HTTP {error.code}: {error.reason})."
+        ) from error
 
     except (
         urllib.error.URLError,
@@ -316,9 +327,11 @@ def fetch_championship_standings(year, category):
         json.JSONDecodeError,
     ) as error:
         raise DataProblem(
-            f"Could not load {year} {category} championship standings."
+            f"Could not load {year} {category} championship "
+            f"standings ({type(error).__name__}: {error})."
         ) from error
 
+    # Extract standings from the API response.
     standings_lists = (
         payload.get("MRData", {})
         .get("StandingsTable", {})
@@ -442,6 +455,302 @@ def fetch_season_podium_statistics(year):
         "race_count": len(race_rounds),
     }
 
+
+
+# ------------------------------------------------------------
+# Historical driver profile data
+# ------------------------------------------------------------
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_season_driver_profiles(year):
+    """
+    Fetch every driver who appeared in a Grand Prix during a season.
+
+    Championship points and positions come from final standings.
+    Starts, race wins, podiums and team history come from race results.
+    """
+
+    import time
+
+    limit = 100
+    offset = 0
+    total = None
+
+    drivers = {}
+    race_rounds = set()
+
+    while total is None or offset < total:
+
+        url = (
+            f"{JOLPICA_BASE_URL}/{int(year)}/results/"
+            f"?limit={limit}&offset={offset}"
+        )
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "F1-Telemetry-Explorer/1.0"
+            },
+        )
+
+
+        last_error = None
+
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(
+                    request,
+                    timeout=30,
+                ) as response:
+                    payload = json.load(response)
+
+                last_error = None
+                break
+
+
+            except urllib.error.HTTPError as error:
+
+                if error.code == 429:
+                    retry_after = error.headers.get("Retry-After")
+
+                    message = (
+                        f"Jolpica rate limit reached for {year} "
+                        "(HTTP 429)."
+                    )
+
+                    if retry_after:
+                        message += (
+                            f" Retry after: {retry_after}."
+                        )
+                    else:
+                        message += (
+                            " Try again after the API rate window resets."
+                        )
+
+                    raise DataProblem(message) from error
+
+                last_error = error
+
+                if error.code not in (
+                    408, 500, 502, 503, 504
+                ):
+                    break
+
+
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                json.JSONDecodeError,
+            ) as error:
+                last_error = error
+
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+
+        if last_error is not None:
+            raise DataProblem(
+                f"Could not load {year} driver race history "
+                f"after {attempt + 1} attempt(s): "
+                f"{type(last_error).__name__}: {last_error}"
+            ) from last_error
+
+
+        metadata = payload.get("MRData", {})
+
+        try:
+            total = int(metadata.get("total", 0))
+            actual_limit = int(metadata.get("limit") or limit)
+        except (TypeError, ValueError):
+            raise DataProblem(
+                f"Invalid pagination data returned for {year}."
+            )
+
+        if actual_limit <= 0:
+            raise DataProblem(
+                f"Invalid API pagination limit for {year}."
+            )
+
+        races = (
+            metadata.get("RaceTable", {})
+            .get("Races", [])
+        )
+
+        if not races:
+            if offset < total:
+                raise DataProblem(
+                    f"Incomplete driver history download for {year}."
+                )
+            break
+
+        for race in races:
+
+            round_number = race.get("round")
+
+            if round_number is not None:
+                race_rounds.add(str(round_number))
+
+            for result in race.get("Results", []):
+
+                driver = result.get("Driver", {})
+                driver_id = driver.get("driverId")
+
+                if not driver_id:
+                    continue
+
+                if driver_id not in drivers:
+                    drivers[driver_id] = {
+                        "driver_id": driver_id,
+                        "given_name": driver.get("givenName", ""),
+                        "family_name": driver.get("familyName", ""),
+                        "full_name": (
+                            f"{driver.get('givenName', '')} "
+                            f"{driver.get('familyName', '')}"
+                        ).strip(),
+                        "code": driver.get("code", ""),
+                        "permanent_number": driver.get(
+                            "permanentNumber", ""
+                        ),
+                        "nationality": driver.get("nationality", ""),
+                        "date_of_birth": driver.get("dateOfBirth", ""),
+                        "wikipedia_url": driver.get("url", ""),
+                        "grand_prix_starts": 0,
+                        "race_wins": 0,
+                        "podiums": 0,
+                        "best_finish": None,
+                        "teams": [],
+                        "points": 0.0,
+                        "championship_position": None,
+                    }
+
+                profile = drivers[driver_id]
+
+                # Count appearances in Grand Prix race results.
+                profile["grand_prix_starts"] += 1
+
+                constructor_name = (
+                    result.get("Constructor", {}).get("name")
+                )
+
+                if (
+                    constructor_name
+                    and constructor_name not in profile["teams"]
+                ):
+                    profile["teams"].append(constructor_name)
+
+                try:
+                    position = int(result.get("position"))
+                except (TypeError, ValueError):
+                    position = None
+
+                if position is not None:
+
+                    if (
+                        profile["best_finish"] is None
+                        or position < profile["best_finish"]
+                    ):
+                        profile["best_finish"] = position
+
+                    if position == 1:
+                        profile["race_wins"] += 1
+
+                    if position in (1, 2, 3):
+                        profile["podiums"] += 1
+
+        offset += actual_limit
+
+        if offset < total:
+            time.sleep(0.2)
+
+    if not drivers:
+        raise DataProblem(
+            f"No participating drivers were found for {year}."
+        )
+
+    # Use final championship standings for official points
+    # and championship positions.
+    standings = fetch_championship_standings(
+        year,
+        "drivers",
+    )
+
+    standings_by_id = {
+        item["Driver"]["driverId"]: item
+        for item in standings
+        if item.get("Driver", {}).get("driverId")
+    }
+
+    for driver_id, profile in drivers.items():
+
+        standing = standings_by_id.get(driver_id)
+
+        if standing:
+
+            profile["points"] = float(
+                standing.get("points", 0)
+            )
+
+            try:
+                profile["championship_position"] = int(
+                    standing["position"]
+                )
+            except (KeyError, TypeError, ValueError):
+                profile["championship_position"] = None
+
+    return {
+        "year": int(year),
+        "race_count": len(race_rounds),
+        "drivers": drivers,
+    }
+
+
+# ------------------------------------------------------------
+# Combined four-season driver database
+# ------------------------------------------------------------
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_driver_profile_database(
+    season_years=(2022, 2023, 2024, 2025),
+):
+    """Fetch available seasons and combine their driver profiles."""
+
+    season_years = tuple(int(year) for year in season_years)
+
+    season_data_by_year = {}
+    unavailable_seasons = {}
+    rate_limited = False
+
+    for year in season_years:
+
+        if rate_limited:
+            unavailable_seasons[year] = (
+                "Skipped because an earlier request encountered "
+                "the Jolpica API rate limit."
+            )
+            continue
+
+        try:
+            season_data = fetch_season_driver_profiles(year)
+            season_data_by_year[year] = season_data
+
+        except DataProblem as error:
+            unavailable_seasons[year] = str(error)
+
+            if "HTTP 429" in str(error):
+                rate_limited = True
+
+    try:
+        return combine_driver_seasons(
+            season_data_by_year=season_data_by_year,
+            requested_years=season_years,
+            unavailable_seasons=unavailable_seasons,
+        )
+
+    except ValueError as error:
+        raise DataProblem(
+            "No historical driver data could be loaded. "
+            "Please try again after the API rate limit resets."
+        ) from error
 
 
 # Backward-compatible wrappers for the existing 2022 gallery.
@@ -896,6 +1205,7 @@ data_mode = st.sidebar.radio(
     [
         "Browse saved analyses",
         "Championship Comparison",
+        "Driver Profiles",
         "Load a new F1 session",
     ],
     index=0,
@@ -1259,7 +1569,7 @@ if data_mode == "Browse saved analyses":
                 )
 
             st.divider()
-        
+
 
     # Don't execute any live-data code in saved-analysis mode.
     st.stop()
@@ -1588,6 +1898,279 @@ elif data_mode == "Championship Comparison":
     st.success(
         "Three-season championship comparison loaded successfully."
     )
+
+    st.stop()
+
+
+
+elif data_mode == "Driver Profiles":
+
+    st.title("🏎️ F1 Driver Profiles")
+
+    st.caption(
+        "Explore driver identities, team history and performance "
+        "across the 2022–2025 Formula 1 seasons."
+    )
+
+    profile_years = [2022, 2023, 2024, 2025]
+
+    # --------------------------------------------------------
+    # Load historical driver database
+    # --------------------------------------------------------
+
+    try:
+        with st.spinner(
+            "Building the historical F1 driver database..."
+        ):
+            profile_data = fetch_driver_profile_database(
+                profile_years
+            )
+
+    except Exception as error:
+        st.error(
+            f"Could not load driver profiles: "
+            f"{type(error).__name__}: {error}"
+        )
+        st.stop()
+
+    driver_records = profile_data["drivers"]
+
+    unavailable_seasons = profile_data.get(
+        "unavailable_seasons", {}
+    )
+
+    if unavailable_seasons:
+        st.warning(
+    "Some seasons could not be loaded. "
+    "Showing data from the seasons currently available."
+)
+        for unavailable_year, reason in unavailable_seasons.items():
+            st.caption(f"{unavailable_year}: {reason}")
+
+    if not driver_records:
+        st.warning("No driver profiles were found.")
+        st.stop()
+
+    # --------------------------------------------------------
+    # Driver selector
+    # --------------------------------------------------------
+
+    driver_ids = sorted(
+        driver_records.keys(),
+        key=lambda driver_id: (
+            driver_records[driver_id]["full_name"].casefold()
+        ),
+    )
+
+    selected_driver_id = st.selectbox(
+        "Select an F1 driver",
+        driver_ids,
+        format_func=lambda driver_id: (
+            driver_records[driver_id]["full_name"]
+        ),
+        key="profile_driver_selector",
+    )
+
+    profile = driver_records[selected_driver_id]
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Driver identity and portrait
+    # --------------------------------------------------------
+
+    photo_col, identity_col = st.columns([1, 2])
+
+    with photo_col:
+
+        photo_url = fetch_driver_photo_url(
+            profile.get("wikipedia_url")
+        )
+
+        if photo_url:
+            st.image(
+                photo_url,
+                caption=profile["full_name"],
+                width=320,
+            )
+        else:
+            st.info("Driver portrait is currently unavailable.")
+
+    with identity_col:
+
+        st.subheader(profile["full_name"])
+
+        st.write(
+            f"**Nationality:** "
+            f"{profile.get('nationality') or 'Not available'}"
+        )
+
+        st.write(
+            f"**Permanent racing number:** "
+            f"{profile.get('permanent_number') or 'Not listed'}"
+        )
+
+        st.write(
+            f"**Driver abbreviation:** "
+            f"{profile.get('code') or 'Not available'}"
+        )
+
+        st.write(
+            f"**Date of birth:** "
+            f"{profile.get('date_of_birth') or 'Not available'}"
+        )
+
+        teams = profile.get("teams", [])
+
+        st.write(
+            f"**Teams during 2022–2025:** "
+            f"{', '.join(teams) if teams else 'Not available'}"
+        )
+
+        if profile.get("wikipedia_url"):
+            st.markdown(
+                f"[View driver profile and source]({profile['wikipedia_url']})"
+            )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # Four-season performance statistics
+    # --------------------------------------------------------
+
+    st.subheader("📊 Performance Overview")
+
+
+
+    available_years = ", ".join(
+        str(year) for year in profile_data["years"]
+    )
+
+    st.caption(
+        f"Statistics cover the available seasons: {available_years}. "
+        "They are not lifetime career totals."
+    )
+
+    metric_columns = st.columns(4)
+
+    metric_values = [
+            (
+                "Grand Prix entries",
+                profile["total_starts"],
+            ),
+            (
+                "Race wins",
+                profile["total_wins"],
+            ),
+            (
+                "Race podiums",
+                profile["total_podiums"],
+            ),
+            (
+                "Championship points",
+                f"{profile['total_points']:,.0f}",
+            ),
+        ]
+
+    for column, (label, value) in zip(
+            metric_columns,
+            metric_values,
+        ):
+            column.metric(label, value)
+
+    st.metric(
+            "Championship titles during 2022–2025",
+            profile["championship_titles"],
+        )
+
+    st.divider()
+
+        # --------------------------------------------------------
+        # Season-by-season history
+        # --------------------------------------------------------
+
+    st.subheader("🏆 Season-by-Season Performance")
+
+    season_rows = []
+
+    for season_year in profile_data["years"]:
+
+            season_stats = profile["seasons"].get(season_year)
+
+            if season_stats is None:
+                continue
+
+            position = season_stats["championship_position"]
+
+            season_rows.append({
+                "Season": season_year,
+                "Team": ", ".join(season_stats["team"]) or "Unknown",
+                "Grand Prix Entries": season_stats["starts"],
+                "Wins": season_stats["wins"],
+                "Podiums": season_stats["podiums"],
+                "Points": season_stats["points"],
+                "Championship Position": (
+                    f"P{position}" if position is not None else "N/A"
+                ),
+                "Best Race Finish": (
+                    season_stats["best_finish"]
+                    if season_stats["best_finish"] is not None
+                    else "N/A"
+                ),
+            })
+
+
+    season_df = pd.DataFrame(season_rows)
+
+    if season_df.empty:
+            st.info("No season statistics are available for this driver.")
+
+    else:
+            st.dataframe(
+                season_df,
+                hide_index=True,
+                width="stretch",
+            )
+
+            # ----------------------------------------------------
+            # Points progression
+            # ----------------------------------------------------
+
+            st.subheader("📈 Championship Points Progression")
+
+            points_chart = season_df.set_index("Season")[["Points"]]
+
+            st.bar_chart(
+                points_chart,
+                height=300,
+            )
+
+            # ----------------------------------------------------
+            # Wins and podium progression
+            # ----------------------------------------------------
+
+            st.subheader("🏁 Race Wins and Podiums")
+
+            performance_chart = season_df.set_index("Season")[
+                ["Wins", "Podiums"]
+            ]
+
+            st.bar_chart(
+                performance_chart,
+                height=350,
+            )
+
+    st.divider()
+
+    st.caption(
+            "Sources: Jolpica-F1 historical championship standings "
+            "and Grand Prix race classifications. "
+            "Sprint results are not included in these statistics."
+        )
+
+    st.success(
+            f"Driver profile loaded: {profile['full_name']}"
+        )
 
     st.stop()
 
