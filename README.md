@@ -185,6 +185,65 @@ The `images/` directory stores the saved analyses by Grand Prix and session.
 - Automating the generation of charts for an entire racing season.
 - Managing project versions and deploying an application through GitHub.
 
+## 🏎️ 2022 Season Explorer
+
+Explore all 22 Grands Prix from the 2022 Formula 1 season with separate Qualifying and Race analysis.
+
+### Session Selection
+
+Choose any Grand Prix and switch between:
+
+- **Qualifying:** Qualifying results, pole-position spotlight, circuit speed map, car telemetry, and driver comparisons.
+- **Race:** Official race top three, race-winner spotlight, lap-time progression, race-position progression, and fastest-lap comparisons.
+
+### Race Analysis
+
+Each Race session includes:
+
+1. Race Position Progression
+2. Race Lap-Time Progression
+3. Fastest Recorded Lap Comparison
+
+### Data Sources
+
+- **FastF1:** Session data and car telemetry.
+- **Jolpica-F1 API:** Qualifying results, race classifications, and public lap timing data.
+- **Wikipedia:** Driver portrait images through its page-image API.
+
+### Data Accuracy and Limitations
+
+Qualifying telemetry charts use FastF1 session telemetry.
+
+The general Race analysis charts use public lap timing and classification data. They do not represent car speed, throttle, braking, gear, or GPS telemetry.
+
+The displayed driver comparisons and lap-time analyses should be interpreted according to their respective data sources and calculation methods.
+
+---
+
+## 📸 Project Gallery
+
+### ⏱️ Qualifying Analysis
+
+Explore circuit layouts, car telemetry, and driver comparisons from qualifying sessions.
+
+<p align="center">
+  <img src="images/2022-bahrain-grand-prix-qualifying/f1_circuit_speed_map.png" width="32%" alt="Bahrain qualifying circuit speed map" />
+  <img src="images/2022-bahrain-grand-prix-qualifying/f1_telemetry_analysis.png" width="32%" alt="Bahrain qualifying car telemetry" />
+  <img src="images/2022-bahrain-grand-prix-qualifying/f1_driver_comparison.png" width="32%" alt="Bahrain qualifying driver comparison" />
+</p>
+
+### 🏁 Race Analysis
+
+Explore driver position changes, lap-time progression, and fastest recorded laps.
+
+<p align="center">
+  <img src="images/2022-bahrain-grand-prix-race/race_position_progression.png" width="32%" alt="Bahrain race position progression" />
+  <img src="images/2022-bahrain-grand-prix-race/race_lap_time_progression.png" width="32%" alt="Bahrain race lap time progression" />
+  <img src="images/2022-bahrain-grand-prix-race/race_fastest_lap_comparison.png" width="32%" alt="Bahrain race fastest lap comparison" />
+</p>
+
+**Explore all 22 Grands Prix:** [Launch the live dashboard](https://f1-telemetry-explorer-a43zvpfwmhrydchs28qjxn.streamlit.app/).
+
 ## 🔮 Future Improvements
 
 - Expand the explorer to additional Formula 1 seasons.
