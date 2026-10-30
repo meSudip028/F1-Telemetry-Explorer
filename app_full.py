@@ -1273,7 +1273,7 @@ elif data_mode == "Championship Comparison":
 
     st.caption(
         "Compare Formula 1 Drivers and Constructors "
-        "Championship standings across 2022, 2023 and 2024."
+        "Championship standings across 2022, 2023, 2024, and 2025."
     )
 
     category = st.radio(
@@ -1283,7 +1283,7 @@ elif data_mode == "Championship Comparison":
         key="championship_category",
     )
 
-    season_years = [2022, 2023, 2024]
+    season_years = [2022, 2023, 2024, 2025]
 
     # --------------------------------------------------------
     # Load standings and podium statistics for all seasons
@@ -1293,7 +1293,7 @@ elif data_mode == "Championship Comparison":
     podium_stats_by_year = {}
 
     try:
-        with st.spinner("Loading three-season championship data..."):
+        with st.spinner("Loading four-season championship data..."):
 
             for season_year in season_years:
 
@@ -1377,7 +1377,7 @@ elif data_mode == "Championship Comparison":
 
         return rows
 
-    # Build standings for all three seasons.
+    # Build standings for all four seasons.
 
     rows_by_year = {}
 
@@ -1474,7 +1474,7 @@ elif data_mode == "Championship Comparison":
     # Three-season points comparison
     # --------------------------------------------------------
 
-    st.subheader("📊 Three-Season Points Comparison")
+    st.subheader("📊 Four-Season Points Comparison")
 
     points_by_year = {}
 
@@ -1523,10 +1523,10 @@ elif data_mode == "Championship Comparison":
     st.divider()
 
     # --------------------------------------------------------
-    # Three-season podium comparison
+    # Four-season podium comparison
     # --------------------------------------------------------
 
-    st.subheader("🥉 Three-Season Podium Comparison")
+    st.subheader("🥉 Four-Season Podium Comparison")
 
     podiums_by_year = {}
 
