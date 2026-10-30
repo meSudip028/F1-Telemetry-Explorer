@@ -1245,13 +1245,14 @@ if data_mode == "Browse saved analyses":
 
 
 
+
 elif data_mode == "Championship Comparison":
 
     st.title("🏆 F1 Championship Comparison")
 
     st.caption(
-        "Compare the final Formula 1 Drivers and Constructors "
-        "Championship standings between 2022 and 2023."
+        "Compare Formula 1 Drivers and Constructors "
+        "Championship standings across 2022, 2023 and 2024."
     )
 
     category = st.radio(
@@ -1261,26 +1262,37 @@ elif data_mode == "Championship Comparison":
         key="championship_category",
     )
 
+    season_years = [2022, 2023, 2024]
+
     # --------------------------------------------------------
-    # Load championship data
+    # Load standings and podium statistics for all seasons
     # --------------------------------------------------------
+
+    standings_by_year = {}
+    podium_stats_by_year = {}
 
     try:
-        with st.spinner("Loading historical championship standings..."):
+        with st.spinner("Loading three-season championship data..."):
 
-            standings_2022 = fetch_championship_standings(
-                2022, category
-            )
+            for season_year in season_years:
 
-            standings_2023 = fetch_championship_standings(
-                2023, category
-            )
+                standings_by_year[season_year] = (
+                    fetch_championship_standings(
+                        season_year,
+                        category,
+                    )
+                )
 
-            podium_stats_2022 = fetch_season_podium_statistics(2022)
-            podium_stats_2023 = fetch_season_podium_statistics(2023)
+                podium_stats_by_year[season_year] = (
+                    fetch_season_podium_statistics(
+                        season_year
+                    )
+                )
 
     except Exception as error:
-        st.error(f"Could not load championship data: {error}")
+        st.error(
+            f"Could not load championship data: {error}"
+        )
         st.stop()
 
     # --------------------------------------------------------
@@ -1295,15 +1307,19 @@ elif data_mode == "Championship Comparison":
         rows = []
 
         stats_key = (
-            "drivers" if category == "Drivers"
+            "drivers"
+            if category == "Drivers"
             else "constructors"
         )
 
-        podium_lookup = podium_statistics.get(stats_key, {})
+        podium_lookup = podium_statistics.get(
+            stats_key, {}
+        )
 
         for item in standings:
 
             if category == "Drivers":
+
                 participant = item["Driver"]
 
                 name = (
@@ -1318,10 +1334,13 @@ elif data_mode == "Championship Comparison":
                 )[0].get("name", "Unknown")
 
             else:
+
                 participant = item["Constructor"]
 
                 name = participant.get("name", "Unknown")
+
                 participant_id = participant["constructorId"]
+
                 team = name
 
             rows.append({
@@ -1337,23 +1356,24 @@ elif data_mode == "Championship Comparison":
 
         return rows
 
-    # IMPORTANT: These calls must be OUTSIDE the function above.
+    # Build standings for all three seasons.
 
-    rows_2022 = make_championship_rows(
-        standings_2022,
-        category,
-        podium_stats_2022,
-    )
+    rows_by_year = {}
 
-    rows_2023 = make_championship_rows(
-        standings_2023,
-        category,
-        podium_stats_2023,
-    )
+    for season_year in season_years:
 
-    if not rows_2022 or not rows_2023:
-        st.error("Championship standings are empty.")
-        st.stop()
+        rows_by_year[season_year] = make_championship_rows(
+            standings_by_year[season_year],
+            category,
+            podium_stats_by_year[season_year],
+        )
+
+        if not rows_by_year[season_year]:
+            st.error(
+                f"No {category.lower()} standings found for "
+                f"{season_year}."
+            )
+            st.stop()
 
     # --------------------------------------------------------
     # Season champions
@@ -1361,33 +1381,35 @@ elif data_mode == "Championship Comparison":
 
     st.subheader("🏆 Season Champions")
 
-    champion_columns = st.columns(2)
+    champion_columns = st.columns(len(season_years))
 
-    for column, year, rows in zip(
+    for column, season_year in zip(
         champion_columns,
-        [2022, 2023],
-        [rows_2022, rows_2023],
+        season_years,
     ):
 
-        champion = rows[0]
+        champion = rows_by_year[season_year][0]
 
         with column:
+
             with st.container(border=True):
 
-                st.caption(f"{year} {category[:-1]} Champion")
+                st.caption(
+                    f"{season_year} Champion"
+                )
 
-                st.markdown(f"## 🏆 {champion['Name']}")
+                st.markdown(
+                    f"## 🏆 {champion['Name']}"
+                )
 
                 st.write(champion["Team"])
 
-                metric_col1, metric_col2 = st.columns(2)
-
-                metric_col1.metric(
+                st.metric(
                     "Championship Points",
                     f"{champion['Points']:,.0f}",
                 )
 
-                metric_col2.metric(
+                st.metric(
                     "Race Wins",
                     champion["Wins"],
                 )
@@ -1405,120 +1427,146 @@ elif data_mode == "Championship Comparison":
 
     st.subheader(f"{category} Standings")
 
-    tab_2022, tab_2023 = st.tabs(
-        ["2022 Season", "2023 Season"]
-    )
+    season_tabs = st.tabs([
+        f"{season_year} Season"
+        for season_year in season_years
+    ])
 
-    with tab_2022:
-        st.dataframe(
-            pd.DataFrame(rows_2022),
-            hide_index=True,
-            width="stretch",
-        )
+    for tab, season_year in zip(
+        season_tabs,
+        season_years,
+    ):
 
-    with tab_2023:
-        st.dataframe(
-            pd.DataFrame(rows_2023),
-            hide_index=True,
-            width="stretch",
-        )
+        with tab:
+
+            st.dataframe(
+                pd.DataFrame(
+                    rows_by_year[season_year]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
 
     st.divider()
 
     # --------------------------------------------------------
-    # Points comparison
+    # Three-season points comparison
     # --------------------------------------------------------
 
-    st.subheader("📊 2022 vs 2023 Points Comparison")
+    st.subheader("📊 Three-Season Points Comparison")
 
-    points_2022 = {
-        item["Name"]: item["Points"]
-        for item in rows_2022
-    }
+    points_by_year = {}
 
-    points_2023 = {
-        item["Name"]: item["Points"]
-        for item in rows_2023
-    }
+    for season_year in season_years:
 
-    all_names = set(points_2022) | set(points_2023)
+        points_by_year[season_year] = {
+            item["Name"]: item["Points"]
+            for item in rows_by_year[season_year]
+        }
+
+    all_names = set()
+
+    for points in points_by_year.values():
+        all_names.update(points.keys())
 
     sorted_names = sorted(
         all_names,
-        key=lambda name: (
-            points_2022.get(name, 0)
-            + points_2023.get(name, 0)
+        key=lambda name: sum(
+            points_by_year[season_year].get(name, 0)
+            for season_year in season_years
         ),
         reverse=True,
     )
 
-    comparison_df = pd.DataFrame([
-        {
-            "Name": name,
-            "2022 Points": points_2022.get(name, 0),
-            "2023 Points": points_2023.get(name, 0),
-        }
-        for name in sorted_names
-    ])
+    comparison_rows = []
+
+    for name in sorted_names:
+
+        row = {"Name": name}
+
+        for season_year in season_years:
+
+            row[f"{season_year} Points"] = (
+                points_by_year[season_year].get(name, 0)
+            )
+
+        comparison_rows.append(row)
+
+    comparison_df = pd.DataFrame(comparison_rows)
 
     st.bar_chart(
         comparison_df.set_index("Name"),
-        height=500,
+        height=600,
     )
 
     st.divider()
 
     # --------------------------------------------------------
-    # Podium comparison
+    # Three-season podium comparison
     # --------------------------------------------------------
 
-    st.subheader("🥉 2022 vs 2023 Podium Comparison")
+    st.subheader("🥉 Three-Season Podium Comparison")
 
-    podiums_2022 = {
-        item["Name"]: item["Podiums"]
-        for item in rows_2022
-    }
+    podiums_by_year = {}
 
-    podiums_2023 = {
-        item["Name"]: item["Podiums"]
-        for item in rows_2023
-    }
+    for season_year in season_years:
 
-    all_participants = set(podiums_2022) | set(podiums_2023)
-
-    podium_comparison_df = pd.DataFrame([
-        {
-            "Name": name,
-            "2022 Podiums": podiums_2022.get(name, 0),
-            "2023 Podiums": podiums_2023.get(name, 0),
+        podiums_by_year[season_year] = {
+            item["Name"]: item["Podiums"]
+            for item in rows_by_year[season_year]
         }
-        for name in sorted(
-            all_participants,
-            key=lambda name: (
-                podiums_2022.get(name, 0)
-                + podiums_2023.get(name, 0)
-            ),
-            reverse=True,
-        )
-    ])
+
+    all_participants = set()
+
+    for podiums in podiums_by_year.values():
+        all_participants.update(podiums.keys())
+
+    sorted_participants = sorted(
+        all_participants,
+        key=lambda name: sum(
+            podiums_by_year[season_year].get(name, 0)
+            for season_year in season_years
+        ),
+        reverse=True,
+    )
+
+    podium_comparison_rows = []
+
+    for name in sorted_participants:
+
+        row = {"Name": name}
+
+        for season_year in season_years:
+
+            row[f"{season_year} Podiums"] = (
+                podiums_by_year[season_year].get(name, 0)
+            )
+
+        podium_comparison_rows.append(row)
+
+    podium_comparison_df = pd.DataFrame(
+        podium_comparison_rows
+    )
 
     st.bar_chart(
         podium_comparison_df.set_index("Name"),
-        height=500,
+        height=600,
     )
 
     st.caption(
-        "Podium counts are calculated from official race finishing "
-        "positions 1–3 across all completed race weekends."
+        "Podium counts are calculated from official race "
+        "finishing positions 1–3 across all completed "
+        "race weekends in each season."
     )
 
     st.caption(
-        "These are final season championship totals. "
-        "A value of zero means the driver or constructor "
-        "did not score points in that season."
+        "Points and wins use final championship standings. "
+        "A zero means the participant did not score in that season."
     )
 
-    st.success("Championship comparison loaded successfully.")
+    st.success(
+        "Three-season championship comparison loaded successfully."
+    )
 
     st.stop()
 
